@@ -1,0 +1,34 @@
+{
+  "name": "most-data-sqlite",
+  "version": "0.1.2",
+  "description": "Most Web Framework SQLite Adapter",
+  "homepage": "http://www.themost.io/",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kbarbounakis/most-data-sqlite.git"
+  },
+  "keywords": [
+    "web",
+    "mvc",
+    "most",
+    "most-web",
+    "framework",
+    "model",
+    "view",
+    "controller",
+    "data",
+    "sqlite",
+    "sqlite3"
+  ],
+  "author": "Kyriakos Barbounakis <k.barbounakis@gmail.com>",
+  "license": "BSD3-Clause",
+  "bugs": {
+    "url": "https://github.com/kbarbounakis/most-data-sqlite/issues"
+  },
+  "homepage": "https://github.com/kbarbounakis/most-data-sqlite",
+  "dependencies": {
+    "async": "~0.9.0",
+    "most-query": "~0.1.8",
+    "sqlite3":"~3.0.5"
+  }
+}
