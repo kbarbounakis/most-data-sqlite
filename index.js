@@ -98,6 +98,60 @@ SQLiteAdapter.prototype.prepare = function(query,values) {
     return qry.prepare(query,values)
 };
 
+SQLiteAdapter.formatType = function(field)
+{
+    var size = parseInt(field.size);
+    switch (field.type)
+    {
+        case 'Boolean':
+            s = 'INTEGER(1)';
+            break;
+        case 'Byte':
+            s = 'INTEGER(1)';
+            break;
+        case 'Number':
+        case 'Float':
+            s = 'REAL';
+            break;
+        case 'Counter':
+            return 'INTEGER PRIMARY KEY';
+        case 'Currency':
+        case 'Decimal':
+            s =  'NUMERIC';
+            break;
+        case 'Date':
+        case 'Time':
+        case 'DateTime':
+            s = 'NUMERIC';
+            break;
+        case 'Long':
+        case 'Integer':
+        case 'Duration':
+            s = 'INTEGER';
+            break;
+        case 'URL':
+        case 'Text':
+        case 'Note':
+            s =field.size ? util.format('TEXT(%s)', field.size) : 'TEXT';
+            break;
+        case 'Image':
+        case 'Binary':
+            s ='BLOB';
+            break;
+        case 'Guid':
+            s = 'TEXT(36)';
+            break;
+        case 'Short':
+            s = 'INTEGER';
+            break;
+        default:
+            s = 'INTEGER';
+            break;
+    }
+    s += field.nullable===undefined ? ' NULL': field.nullable ? ' NULL': ' NOT NULL';
+    return s;
+}
+
 /**
  * Executes a query against the underlying database
  * @param query {QueryExpression|string|*}
