@@ -129,13 +129,21 @@ SQLiteAdapter.prototype.execute = function(query, values, callback) {
                 callback.call(self, err);
             }
             else {
-                //todo: validate statement for sql injection (e.g single statement etc)
                 //log statement (optional)
                 if (process.env.NODE_ENV==='development')
                     console.log(util.format('SQL:%s, Parameters:%s', sql, JSON.stringify(values)));
-                var prepared = self.prepare(sql, values), params;
+                var prepared = self.prepare(sql, values), params, fn;
+                //validate statement
+                if (/^SELECT/ig.test(prepared)) {
+                    //prepare for select
+                    fn = self.rawConnection.all;
+                }
+                else {
+                    //otherwise prepare for run
+                    fn = self.rawConnection.run;
+                }
                 //execute raw command
-                self.rawConnection.run(prepared, params , function(err, result) {
+                fn.call(self.rawConnection, prepared, params , function(err, result) {
                     if (err) {
                         //log sql
                         console.log(util.format('SQL Error:%s', prepared));
@@ -143,7 +151,7 @@ SQLiteAdapter.prototype.execute = function(query, values, callback) {
                     }
                     else {
                         if (result)
-                            callback(null, result.rows);
+                            callback(null, result);
                         else
                             callback();
                     }
