@@ -150,8 +150,62 @@ SQLiteAdapter.formatType = function(field)
     }
     s += field.nullable===undefined ? ' NULL': field.nullable ? ' NULL': ' NOT NULL';
     return s;
-}
+};
 
+SQLiteAdapter.prototype.table = function(name) {
+    var self = this;
+    return {
+        /**
+         * @param {function(Error,Boolean=)} callback
+         */
+        exists:function(callback) {
+            self.execute('SELECT COUNT(*) count FROM sqlite_master WHERE name=? AND type=\'table\';', [name], function(err, result) {
+                if (err) { callback(err); return; }
+                callback(null, (result[0].count>0));
+            });
+        },
+        /**
+         * @param {function(Error,string=)} callback
+         */
+        version:function(callback) {
+            self.execute('SELECT MAX(version) AS version FROM migrations WHERE appliesTo=?',
+                [name], function(err, result) {
+                    if (err) { cb(err); return; }
+                    if (result.length==0)
+                        callback(null, '0.0');
+                    else
+                        callback(null, result[0].version || '0.0');
+                });
+        },
+        /**
+         * @param {function(Error,Boolean=)} callback
+         */
+        has_sequence:function(callback) {
+            callback = callback || function() {};
+            self.execute('SELECT COUNT(*) count FROM sqlite_sequence WHERE name=?',
+                [name], function(err, result) {
+                    if (err) { callback(err); return; }
+                    callback(null, (result[0].count>0));
+                });
+        },
+        /**
+         * @param {function(Error,{columnName:string,ordinal:number,dataType:*, maxLength:number,isNullable:number }[]=)} callback
+         */
+        columns:function(callback) {
+            callback = callback || function() {};
+            self.execute('PRAGMA table_info(?)',
+                [name], function(err, result) {
+                    if (err) { callback(err); return; }
+                    var arr = [];
+                    result.forEach(function(x) {
+                        arr.push({ columnName: x.name, ordinal: x.cid, dataType: x.type,isNullable: x.notnull ? true : false });
+                    });
+                    callback(null, arr);
+                });
+        }
+    }
+
+}
 /**
  * Executes a query against the underlying database
  * @param query {QueryExpression|string|*}
@@ -186,9 +240,10 @@ SQLiteAdapter.prototype.execute = function(query, values, callback) {
                 //log statement (optional)
                 if (process.env.NODE_ENV==='development')
                     console.log(util.format('SQL:%s, Parameters:%s', sql, JSON.stringify(values)));
+                //prepare statement - the traditional way
                 var prepared = self.prepare(sql, values), params, fn;
                 //validate statement
-                if (/^SELECT/ig.test(prepared)) {
+                if (/^(SELECT|PRAGMA)/ig.test(prepared)) {
                     //prepare for select
                     fn = self.rawConnection.all;
                 }
