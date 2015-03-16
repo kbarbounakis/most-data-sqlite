@@ -104,17 +104,17 @@ SQLiteAdapter.formatType = function(field)
     switch (field.type)
     {
         case 'Boolean':
-            s = 'INTEGER(1)';
+            s = 'INTEGER(1,0)';
             break;
         case 'Byte':
-            s = 'INTEGER(1)';
+            s = 'INTEGER(1,0)';
             break;
         case 'Number':
         case 'Float':
             s = 'REAL';
             break;
         case 'Counter':
-            return 'INTEGER PRIMARY KEY';
+            return 'INTEGER PRIMARY KEY AUTOINCREMENT';
         case 'Currency':
         case 'Decimal':
             s =  'NUMERIC';
@@ -132,17 +132,17 @@ SQLiteAdapter.formatType = function(field)
         case 'URL':
         case 'Text':
         case 'Note':
-            s =field.size ? util.format('TEXT(%s)', field.size) : 'TEXT';
+            s =field.size ? util.format('TEXT(%s,0)', field.size) : 'TEXT';
             break;
         case 'Image':
         case 'Binary':
             s ='BLOB';
             break;
         case 'Guid':
-            s = 'TEXT(36)';
+            s = 'TEXT(36,0)';
             break;
         case 'Short':
-            s = 'INTEGER';
+            s = 'INTEGER(2,0)';
             break;
         default:
             s = 'INTEGER';
@@ -150,6 +150,299 @@ SQLiteAdapter.formatType = function(field)
     }
     s += field.nullable===undefined ? ' NULL': field.nullable ? ' NULL': ' NOT NULL';
     return s;
+};
+
+/**
+ * Begins a transactional operation by executing the given function
+ * @param fn {function} The function to execute
+ * @param callback {function(Error=)} The callback that contains the error -if any- and the results of the given operation
+ */
+SQLiteAdapter.prototype.executeInTransaction = function(fn, callback) {
+    var self = this;
+    //ensure parameters
+    fn = fn || function() {}; callback = callback || function() {};
+    self.open(function(err) {
+        if (err) {
+            callback(err);
+        }
+        else {
+            if (self.transaction) {
+                fn.call(self, function(err) {
+                    callback(err);
+                });
+            }
+            else {
+                //begin transaction
+                self.rawConnection.run('BEGIN TRANSACTION;', undefined, function(err) {
+                    if (err) {
+                        callback(err);
+                        return;
+                    }
+                    //initialize dummy transaction object (for future use)
+                    self.transaction = { };
+                    //execute function
+                    fn.call(self, function(err) {
+                        if (err) {
+                            //rollback transaction
+                            self.rawConnection.run('ROLLBACK;', undefined, function() {
+                                self.transaction = null;
+                                callback(err);
+                            });
+                        }
+                        else {
+                            //commit transaction
+                            self.rawConnection.run('COMMIT;', undefined, function(err) {
+                                self.transaction = null;
+                                callback(err);
+                            });
+                        }
+                    });
+                });
+            }
+        }
+    });
+};
+
+/**
+ *
+ * @param {string} name
+ * @param {QueryExpression|*} query
+ * @param {function(Error=)} callback
+ */
+SQLiteAdapter.prototype.createView = function(name, query, callback) {
+    this.view(name).create(query, callback);
+};
+
+
+/*
+ * @param {DataModelMigration|*} obj An Object that represents the data model scheme we want to migrate
+ * @param {function(Error=)} callback
+ */
+SQLiteAdapter.prototype.migrate = function(obj, callback) {
+    var self = this;
+    callback = callback || function() {};
+    if (typeof obj === 'undefined' || obj == null) { callback(); return; }
+    /**
+     * @type {DataModelMigration|*}
+     */
+    var migration = obj;
+
+    var format = function(format, obj)
+    {
+        var result = format;
+        if (/%t/.test(format))
+            result = result.replace(/%t/g,SQLiteAdapter.formatType(obj));
+        if (/%f/.test(format))
+            result = result.replace(/%f/g,obj.name);
+        return result;
+    }
+
+
+    async.waterfall([
+        //1. Check migrations table existence
+        function(cb) {
+            if (SQLiteAdapter.supportMigrations) {
+                cb(null, true);
+                return;
+            }
+            self.table('migrations').exists(function(err, exists) {
+                if (err) { cb(err); return; }
+                cb(null, exists);
+            });
+        },
+        //2. Create migrations table, if it does not exist
+        function(arg, cb) {
+            if (arg) { cb(null, 0); return; }
+            //create migrations table
+            self.execute('CREATE TABLE migrations("id" INTEGER PRIMARY KEY AUTOINCREMENT, ' +
+                '"appliesTo" TEXT NOT NULL, "model" TEXT NULL, "description" TEXT,"version" TEXT NOT NULL)',
+                [], function(err) {
+                    if (err) { cb(err); return; }
+                    SQLiteAdapter.supportMigrations=true;
+                    cb(null, 0);
+                });
+        },
+        //3. Check if migration has already been applied (true=Table version is equal to migration version, false=Table version is older from migration version)
+        function(arg, cb) {
+            self.table(migration.appliesTo).version(function(err, version) {
+                if (err) { cb(err); return; }
+                cb(null, (version>=migration.version));
+            });
+        },
+        //4a. Check table existence (-1=Migration has already been applied, 0=Table does not exist, 1=Table exists)
+        function(arg, cb) {
+            //migration has already been applied (set migration.updated=true)
+            if (arg) {
+                migration['updated']=true;
+                cb(null, -1);
+            }
+            else {
+                self.table(migration.appliesTo).exists(function(err, exists) {
+                    if (err) { cb(err); return; }
+                    cb(null, exists ? 1 : 0);
+                });
+
+            }
+        },
+        //4. Get table columns
+        function(arg, cb) {
+            //migration has already been applied
+            if (arg<0) { cb(null, [arg, null]); return; }
+            self.table(migration.appliesTo).columns(function(err, columns) {
+                if (err) { cb(err); return; }
+                cb(null, [arg, columns]);
+            });
+        },
+        //5. Migrate target table (create or alter)
+        function(args, cb) {
+            //migration has already been applied (args[0]=-1)
+            if (args[0] < 0) {
+                cb(null, args[0]);
+            }
+            else if (args[0] == 0) {
+                //create table
+                var strFields = migration.add.filter(function(x) {
+                    return !x['oneToMany']
+                }).map(
+                    function(x) {
+                        return format('"%f" %t', x);
+                    }).join(', ');
+                var sql = util.format('CREATE TABLE "%s" (%s)', migration.appliesTo, strFields);
+                self.execute(sql, null, function(err) {
+                    if (err) { cb(err); return; }
+                    cb(null, 1);
+                });
+            }
+            else if (args[0] == 1) {
+                var expressions = [];
+                //alter table
+                if (util.isArray(migration.remove)) {
+                    if (migration.remove>0) {
+                        //todo::support drop column (rename table, create new and copy data)
+                        cb(new Error('Drop column is not supported. This operation is not yet implemented.'));
+                        return;
+                    }
+                }
+                if (util.isArray(migration.change)) {
+                    if (migration.change>0) {
+                        //todo::support alter column (rename table, create new and copy data)
+                        cb(new Error('Alter column is not supported. This operation is not yet implemented.'));
+                        return;
+                    }
+                }
+                if (util.isArray(migration.add)) {
+                    migration.add.forEach(function(x) {
+                        expressions.push(util.format('ALTER TABLE "%s" ADD COLUMN "%s" %s', migration.appliesTo, x.name, SQLiteAdapter.formatType(x)));
+                    });
+                }
+                if (expressions.length>0) {
+                    self.execute(expressions.join(';'), [], function(err)
+                    {
+                        if (err) { cb(err); return; }
+                        cb(null, 1);
+                    });
+                }
+                else {
+                    cb(null, 2);
+                }
+            }
+            else {
+                cb(new Error('Invalid table status.'));
+            }
+        },
+        function(arg, cb) {
+            if (arg>0) {
+                //log migration to database
+                self.execute('INSERT INTO migrations("appliesTo", "model", "version", "description") VALUES (?,?,?,?)', [migration.appliesTo,
+                    migration.model,
+                    migration.version,
+                    migration.description ], function(err, result) {
+                    if (err)  {
+                        cb(err);
+                        return;
+                    }
+                    cb(null, 1);
+                });
+            }
+            else {
+                migration['updated'] = true;
+                cb(null, arg);
+            }
+        }
+    ], function(err) {
+        callback(err);
+    })
+
+};
+
+/**
+ * Produces a new identity value for the given entity and attribute.
+ * @param entity {String} The target entity name
+ * @param attribute {String} The target attribute
+ * @param callback {Function=}
+ */
+SQLiteAdapter.prototype.selectIdentity = function(entity, attribute , callback) {
+
+    var self = this;
+
+    var migration = {
+        appliesTo:'increment_id',
+        model:'increments',
+        description:'Increments migration (version 1.0)',
+        version:'1.0',
+        add:[
+            { name:'id', type:'Counter', primary:true },
+            { name:'entity', type:'Text', size:120 },
+            { name:'attribute', type:'Text', size:120 },
+            { name:'value', type:'Integer' }
+        ]
+    }
+    //ensure increments entity
+    self.migrate(migration, function(err)
+    {
+        //throw error if any
+        if (err) { callback.call(self,err); return; }
+        self.execute('SELECT * FROM increment_id WHERE entity=? AND attribute=?', [entity, attribute], function(err, result) {
+            if (err) { callback.call(self,err); return; }
+            if (result.length==0) {
+                //get max value by querying the given entity
+                var q = qry.query(entity).select([qry.fields.max(attribute)]);
+                self.execute(q,null, function(err, result) {
+                    if (err) { callback.call(self, err); return; }
+                    var value = 1;
+                    if (result.length>0) {
+                        value = parseInt(result[0][attribute]) + 1;
+                    }
+                    self.execute('INSERT INTO increment_id(entity, attribute, value) VALUES (?,?,?)',[entity, attribute, value], function(err) {
+                        //throw error if any
+                        if (err) { callback.call(self, err); return; }
+                        //return new increment value
+                        callback.call(self, err, value);
+                    });
+                });
+            }
+            else {
+                //get new increment value
+                var value = parseInt(result[0].value) + 1;
+                self.execute('UPDATE increment_id SET value=? WHERE id=?',[value, result[0].id], function(err) {
+                    //throw error if any
+                    if (err) { callback.call(self, err); return; }
+                    //return new increment value
+                    callback.call(self, err, value);
+                });
+            }
+        });
+    });
+};
+
+/**
+ * Executes an operation against database and returns the results.
+ * @param {DataModelBatch} batch
+ * @param {function(Error=)} callback
+ */
+SQLiteAdapter.prototype.executeBatch = function(batch, callback) {
+    callback = callback || function() {};
+    callback(new Error('DataAdapter.executeBatch() is obsolete. Use DataAdapter.executeInTransaction() instead.'));
 };
 
 SQLiteAdapter.prototype.table = function(name) {
@@ -197,15 +490,74 @@ SQLiteAdapter.prototype.table = function(name) {
                 [name], function(err, result) {
                     if (err) { callback(err); return; }
                     var arr = [];
-                    result.forEach(function(x) {
+                    /**
+                     * enumerates table columns
+                     * @param {{name:string},{cid:number},{type:string},{notnull:number}} x
+                     */
+                    var iterator = function(x) {
                         arr.push({ columnName: x.name, ordinal: x.cid, dataType: x.type,isNullable: x.notnull ? true : false });
-                    });
+                    };
+                    result.forEach(iterator);
                     callback(null, arr);
                 });
         }
     }
 
-}
+};
+
+SQLiteAdapter.prototype.view = function(name) {
+    var self = this;
+    return {
+        /**
+         * @param {function(Error,Boolean=)} callback
+         */
+        exists:function(callback) {
+            self.execute('SELECT COUNT(*) count FROM sqlite_master WHERE name=? AND type=\'view\';', [name], function(err, result) {
+                if (err) { callback(err); return; }
+                callback(null, (result[0].count>0));
+            });
+        },
+        /**
+         * @param {function(Error=)} callback
+         */
+        drop:function(callback) {
+            callback = callback || function() {};
+            self.open(function(err) {
+               if (err) { callback(err); return; }
+                var sql = util.format("DROP VIEW IF EXISTS %s",name);
+                self.execute(sql, undefined, function(err) {
+                    if (err) { callback(err); return; }
+                    callback();
+                });
+            });
+        },
+        /**
+         * @param {QueryExpression|*} q
+         * @param {function(Error=)} callback
+         */
+        create:function(q, callback) {
+            var thisArg = this;
+            self.executeInTransaction(function(tr) {
+                thisArg.drop(function(err) {
+                    if (err) { tr(err); return; }
+                    try {
+                        var sql = util.format("CREATE VIEW %s AS ",name);
+                        var formatter = new SqliteFormatter();
+                        sql += formatter.format(q);
+                        self.execute(sql, undefined, tr);
+                    }
+                    catch(e) {
+                        tr(e);
+                    }
+                });
+            }, function(err) {
+                callback(err);
+            });
+
+        }
+    };
+};
+
 /**
  * Executes a query against the underlying database
  * @param query {QueryExpression|string|*}
@@ -218,7 +570,6 @@ SQLiteAdapter.prototype.execute = function(query, values, callback) {
 
         if (typeof query == 'string') {
             //get raw sql statement
-            //todo: this operation may be obsolete (for security reasons)
             sql = query;
         }
         else {
@@ -252,7 +603,7 @@ SQLiteAdapter.prototype.execute = function(query, values, callback) {
                     fn = self.rawConnection.run;
                 }
                 //execute raw command
-                fn.call(self.rawConnection, prepared, params , function(err, result) {
+                fn.call(self.rawConnection, prepared, [] , function(err, result) {
                     if (err) {
                         //log sql
                         console.log(util.format('SQL Error:%s', prepared));
@@ -274,6 +625,30 @@ SQLiteAdapter.prototype.execute = function(query, values, callback) {
 
 };
 
+SQLiteAdapter.prototype.lastIdentity = function(callback) {
+    var self = this;
+    self.open(function(err) {
+        if (err) {
+            callback(err);
+        }
+        else {
+            //execute lastval (for sequence)
+            self.execute('SELECT last_insert_rowid() as lastval', [], function(err, lastval) {
+                if (err) {
+                    callback(null, { insertId: null });
+                }
+                else {
+                    lastval.rows = lastval.rows || [];
+                    if (lastval.rows.length>0)
+                        callback(null, { insertId:lastval.rows[0]['lastval'] });
+                    else
+                        callback(null, { insertId: null });
+                }
+            });
+        }
+    });
+};
+
 /**
  * @class PGSqlFormatter
  * @constructor
@@ -281,12 +656,19 @@ SQLiteAdapter.prototype.execute = function(query, values, callback) {
  */
 function SqliteFormatter() {
     this.settings = {
-        nameFormat:SqliteFormatter.NAME_FORMAT
+        nameFormat:SqliteFormatter.NAME_FORMAT,
+        forceAlias:true
     }
 }
 util.inherits(SqliteFormatter, qry.classes.SqlFormatter);
 
 SqliteFormatter.NAME_FORMAT = '$1';
+
+SqliteFormatter.prototype.escapeName = function(name) {
+    if (typeof name === 'string')
+        return name.replace(/(\w+)/ig, this.settings.nameFormat);
+    return name;
+};
 
 var sqli = {
     /**
