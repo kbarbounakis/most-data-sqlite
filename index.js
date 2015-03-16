@@ -670,6 +670,100 @@ SqliteFormatter.prototype.escapeName = function(name) {
     return name;
 };
 
+/**
+ * Escapes an object or a value and returns the equivalent sql value.
+ * @param {*} value - A value that is going to be escaped for SQL statements
+ * @param {boolean=} unquoted - An optional value that indicates whether the resulted string will be quoted or not.
+ * returns {string} - The equivalent SQL string value
+ */
+SqliteFormatter.prototype.escape = function(value,unquoted)
+{
+    if (typeof value === 'boolean') { return value ? 1 : 0; }
+    return SqliteFormatter.super_.prototype.escape.call(this, value, unquoted);
+};
+
+/**
+ * Implements indexOf(str,substr) expression formatter.
+ * @param {string} p0 The source string
+ * @param {string} p1 The string to search for
+ * @returns {string}
+ */
+SqliteFormatter.prototype.$indexof = function(p0, p1)
+{
+    return util.format('(INSTR(%s,%s)-1)', this.escape(p0), this.escape(p1));
+};
+
+/**
+ * Implements concat(a,b) expression formatter.
+ * @param {*} p0
+ * @param {*} p1
+ * @returns {string}
+ */
+SqliteFormatter.prototype.$concat = function(p0, p1)
+{
+    return util.format('(IFNULL(%s,\'\') || IFNULL(%s,\'\'))', this.escape(p0),  this.escape(p1));
+};
+
+/**
+ * Implements substring(str,pos) expression formatter.
+ * @param {String} p0 The source string
+ * @param {Number} pos The starting position
+ * @param {Number=} length The length of the resulted string
+ * @returns {string}
+ */
+SqliteFormatter.prototype.$substring = function(p0, pos, length)
+{
+    if (length)
+        return util.format('SUBSTR(%s,%s,%s)', this.escape(p0), pos.valueOf()+1, length.valueOf());
+    else
+        return util.format('SUBSTR(%s,%s)', this.escape(p0), pos.valueOf()+1);
+};
+
+/**
+ * Implements length(a) expression formatter.
+ * @param {*} p0
+ * @returns {string}
+ */
+SqliteFormatter.prototype.$length = function(p0) {
+    return util.format('LENGTH(%s)', this.escape(p0));
+};
+
+SqliteFormatter.prototype.$ceiling = function(p0) {
+    return util.format('CEIL(%s)', this.escape(p0));
+};
+
+SqliteFormatter.prototype.$startswith = function(p0, p1)
+{
+    //validate params
+    if (Object.isNullOrUndefined(p0) || Object.isNullOrUndefined(p1))
+        return '';
+    return 'LIKE(\'' + this.escape(p1, true) + '%\',' + this.escape(p0) + ')';
+};
+
+SqliteFormatter.prototype.$contains = function(p0, p1)
+{
+    //validate params
+    if (Object.isNullOrUndefined(p0) || Object.isNullOrUndefined(p1))
+        return '';
+    return 'LIKE(\'%' + this.escape(p1, true) + '%\',' + this.escape(p0) + ')';
+};
+
+SqliteFormatter.prototype.$endswith = function(p0, p1)
+{
+    //validate params
+    if (Object.isNullOrUndefined(p0) || Object.isNullOrUndefined(p1))
+        return '';
+    return 'LIKE(\'%' + this.escape(p1, true) + '\',' + this.escape(p0) + ')';
+};
+
+SqlFormatter.prototype.$day = function(p0) { return 'CAST(strftime(\'%d\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqlFormatter.prototype.$month = function(p0) { return 'CAST(strftime(\'%m\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqlFormatter.prototype.$year = function(p0) { return 'CAST(strftime(\'%Y\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqlFormatter.prototype.$hour = function(p0) { return 'CAST(strftime(\'%H\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqlFormatter.prototype.$minute = function(p0) { return 'CAST(strftime(\'%M\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqlFormatter.prototype.$second = function(p0) { return 'CAST(strftime(\'%S\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqlFormatter.prototype.$second = function(p0) { return 'date(' + this.escape(p0) + ')'; };
+
 var sqli = {
     /**
      * @constructs SQLiteAdapter
@@ -683,7 +777,7 @@ var sqli = {
     createInstance: function(options) {
         return new SQLiteAdapter(options);
     }
-}
+};
 
 if (typeof exports !== 'undefined')
 {
