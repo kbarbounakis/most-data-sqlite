@@ -25,6 +25,7 @@
   "bugs": {
     "url": "https://github.com/kbarbounakis/most-data-sqlite/issues"
   },
+  "main": "index",
   "homepage": "https://github.com/kbarbounakis/most-data-sqlite",
   "dependencies": {
     "async": "~0.9.0",
