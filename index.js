@@ -29,6 +29,21 @@ var async = require('async'),
     util = require('util'),
     qry = require('most-query'),
     sqlite3 = require('sqlite3').verbose();
+
+/**
+ * native extensions
+ */
+if (typeof Object.isNullOrUndefined !== 'function') {
+    /**
+     * Gets a boolean that indicates whether the given object is null or undefined
+     * @param {*} obj
+     * @returns {boolean}
+     */
+    Object.isNullOrUndefined = function(obj) {
+        return (typeof obj === 'undefined') || (obj==null);
+    }
+}
+
 /**
  * @class SQLiteAdapter
  * @augments DataAdapter
@@ -100,7 +115,7 @@ SQLiteAdapter.prototype.prepare = function(query,values) {
 
 SQLiteAdapter.formatType = function(field)
 {
-    var size = parseInt(field.size);
+    var size = parseInt(field.size), s;
     switch (field.type)
     {
         case 'Boolean':
@@ -114,10 +129,13 @@ SQLiteAdapter.formatType = function(field)
             s = 'REAL';
             break;
         case 'Counter':
-            return 'INTEGER PRIMARY KEY AUTOINCREMENT';
+            return 'INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL';
         case 'Currency':
+            s =  'NUMERIC(' + (field.size || 19) + ',4)';
+            break;
         case 'Decimal':
             s =  'NUMERIC';
+            if ((field.size) && (field.scale)) { s += '(' + field.size + ',' + field.scale + ')'; }
             break;
         case 'Date':
         case 'Time':
@@ -125,9 +143,11 @@ SQLiteAdapter.formatType = function(field)
             s = 'NUMERIC';
             break;
         case 'Long':
-        case 'Integer':
         case 'Duration':
             s = 'INTEGER';
+            break;
+        case 'Integer':
+            s = 'INTEGER' + (field.size ? '(' + field.size + ',0)':'' );
             break;
         case 'URL':
         case 'Text':
@@ -148,8 +168,12 @@ SQLiteAdapter.formatType = function(field)
             s = 'INTEGER';
             break;
     }
-    s += field.nullable===undefined ? ' NULL': field.nullable ? ' NULL': ' NOT NULL';
-    return s;
+    if (field.primary) {
+        return s.concat(' PRIMARY KEY NOT NULL');
+    }
+    else {
+        return s.concat((field.nullable===undefined) ? ' NULL': (field.nullable ? ' NULL': ' NOT NULL'));
+    }
 };
 
 /**
@@ -235,7 +259,7 @@ SQLiteAdapter.prototype.migrate = function(obj, callback) {
         if (/%f/.test(format))
             result = result.replace(/%f/g,obj.name);
         return result;
-    }
+    };
 
 
     async.waterfall([
@@ -314,30 +338,107 @@ SQLiteAdapter.prototype.migrate = function(obj, callback) {
                 });
             }
             else if (args[0] == 1) {
-                var expressions = [];
-                //alter table
+
+                var expressions = [],
+                    /**
+                     * @type {{columnName:string,ordinal:number,dataType:*, maxLength:number,isNullable:number,,primary:boolean }[]}
+                     */
+                    columns = args[1], forceAlter = false, column, newType, oldType;
+                //validate operations
+
+                //1. columns to be removed
                 if (util.isArray(migration.remove)) {
                     if (migration.remove>0) {
-                        //todo::support drop column (rename table, create new and copy data)
-                        cb(new Error('Drop column is not supported. This operation is not yet implemented.'));
-                        return;
+                        for (var i = 0; i < migration.remove.length; i++) {
+                            var x = migration.remove[i];
+                            var colIndex = columns.indexOf(function(y) { return y.name== x.name; });
+                            if (colIndex>=0) {
+                                if (!columns[colIndex].primary) {
+                                    forceAlter = true;
+                                }
+                                else {
+                                    migration.remove.splice(i, 1);
+                                    i-=1;
+                                }
+                            }
+                            else {
+                                migration.remove.splice(i, 1);
+                                i-=1;
+                            }
+                        }
                     }
                 }
+                //1. columns to be changed
                 if (util.isArray(migration.change)) {
                     if (migration.change>0) {
-                        //todo::support alter column (rename table, create new and copy data)
-                        cb(new Error('Alter column is not supported. This operation is not yet implemented.'));
-                        return;
+
+                        for (var i = 0; i < migration.change.length; i++) {
+                            var x = migration.change[i];
+                            column = columns.find(function(y) { return y.name==x.name; });
+                            if (column) {
+                                if (!column.primary) {
+                                    //validate new column type (e.g. TEXT(120,0) NOT NULL)
+                                    newType = format('%t', x); oldType = column.type.toUpperCase().concat(column.nullable ? ' NOT NULL' : ' NULL');
+                                    if ((newType!=oldType)) {
+                                        //force alter
+                                        forceAlter = true;
+                                    }
+                                }
+                                else {
+                                    //remove column from change collection (because it's a primary key)
+                                    migration.change.splice(i, 1);
+                                    i-=1;
+                                }
+                            }
+                            else {
+                                //add column (column was not found in table)
+                                migration.add.push(x);
+                                //remove column from change collection
+                                migration.change.splice(i, 1);
+                                i-=1;
+                            }
+
+                        }
+
                     }
                 }
                 if (util.isArray(migration.add)) {
-                    migration.add.forEach(function(x) {
-                        expressions.push(util.format('ALTER TABLE "%s" ADD COLUMN "%s" %s', migration.appliesTo, x.name, SQLiteAdapter.formatType(x)));
-                    });
+
+                    for (var i = 0; i < migration.add.length; i++) {
+                        var x = migration.add[i];
+                        column = columns.find(function(y) { return (y.name==x.name); });
+                        if (column) {
+                            if (column.primary) {
+                                migration.add.splice(i, 1);
+                                i-=1;
+                            }
+                            else {
+                                newType = format('%t', x); oldType = column.type.toUpperCase().concat(column.nullable ? ' NOT NULL' : ' NULL');
+                                if (newType==oldType) {
+                                    //remove column from add collection
+                                    migration.add.splice(i, 1);
+                                    i-=1;
+                                }
+                                else {
+                                    forceAlter = true;
+                                }
+                            }
+                        }
+                    }
+                    if (forceAlter) {
+                        cb(new Error('Full table migration is not yet implemented.'));
+                        return;
+                    }
+                    else {
+                        migration.add.forEach(function(x) {
+                            //search for columns
+                            expressions.push(util.format('ALTER TABLE "%s" ADD COLUMN "%s" %s', migration.appliesTo, x.name, SQLiteAdapter.formatType(x)));
+                        });
+                    }
+
                 }
                 if (expressions.length>0) {
-                    self.execute(expressions.join(';'), [], function(err)
-                    {
+                    self.execute(expressions.join(';'), [], function(err) {
                         if (err) { cb(err); return; }
                         cb(null, 1);
                     });
@@ -482,7 +583,7 @@ SQLiteAdapter.prototype.table = function(name) {
                 });
         },
         /**
-         * @param {function(Error,{columnName:string,ordinal:number,dataType:*, maxLength:number,isNullable:number }[]=)} callback
+         * @param {function(Error=,Array=)} callback
          */
         columns:function(callback) {
             callback = callback || function() {};
@@ -492,10 +593,18 @@ SQLiteAdapter.prototype.table = function(name) {
                     var arr = [];
                     /**
                      * enumerates table columns
-                     * @param {{name:string},{cid:number},{type:string},{notnull:number}} x
+                     * @param {{name:string},{cid:number},{type:string},{notnull:number},{pk:number}} x
                      */
                     var iterator = function(x) {
-                        arr.push({ columnName: x.name, ordinal: x.cid, dataType: x.type,isNullable: x.notnull ? true : false });
+                        var col = { name: x.name, ordinal: x.cid, type: x.type,nullable: (x.notnull ? true : false), primary: (x.pk==1) };
+                        var matches = /(\w+)\((\d+),(\d+)\)/.exec(x.type);
+                        if (matches) {
+                            //extract max length attribute (e.g. integer(2,0) etc)
+                            if (parseInt(matches[2])>0) { col.size =  parseInt(matches[2]); }
+                            //extract scale attribute from field (e.g. integer(2,0) etc)
+                            if (parseInt(matches[3])>0) { col.scale =  parseInt(matches[3]); }
+                        }
+                        arr.push(col);
                     };
                     result.forEach(iterator);
                     callback(null, arr);
@@ -756,13 +865,13 @@ SqliteFormatter.prototype.$endswith = function(p0, p1)
     return 'LIKE(\'%' + this.escape(p1, true) + '\',' + this.escape(p0) + ')';
 };
 
-SqlFormatter.prototype.$day = function(p0) { return 'CAST(strftime(\'%d\', ' + this.escape(p0) + ') AS INTEGER)'; };
-SqlFormatter.prototype.$month = function(p0) { return 'CAST(strftime(\'%m\', ' + this.escape(p0) + ') AS INTEGER)'; };
-SqlFormatter.prototype.$year = function(p0) { return 'CAST(strftime(\'%Y\', ' + this.escape(p0) + ') AS INTEGER)'; };
-SqlFormatter.prototype.$hour = function(p0) { return 'CAST(strftime(\'%H\', ' + this.escape(p0) + ') AS INTEGER)'; };
-SqlFormatter.prototype.$minute = function(p0) { return 'CAST(strftime(\'%M\', ' + this.escape(p0) + ') AS INTEGER)'; };
-SqlFormatter.prototype.$second = function(p0) { return 'CAST(strftime(\'%S\', ' + this.escape(p0) + ') AS INTEGER)'; };
-SqlFormatter.prototype.$second = function(p0) { return 'date(' + this.escape(p0) + ')'; };
+SqliteFormatter.prototype.$day = function(p0) { return 'CAST(strftime(\'%d\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqliteFormatter.prototype.$month = function(p0) { return 'CAST(strftime(\'%m\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqliteFormatter.prototype.$year = function(p0) { return 'CAST(strftime(\'%Y\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqliteFormatter.prototype.$hour = function(p0) { return 'CAST(strftime(\'%H\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqliteFormatter.prototype.$minute = function(p0) { return 'CAST(strftime(\'%M\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqliteFormatter.prototype.$second = function(p0) { return 'CAST(strftime(\'%S\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqliteFormatter.prototype.$date = function(p0) { return 'date(' + this.escape(p0) + ')'; };
 
 var sqli = {
     /**
