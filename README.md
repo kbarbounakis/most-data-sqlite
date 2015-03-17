@@ -9,11 +9,18 @@ $ npm install most-data-sqlite
 
 Register SQLite adapter on app.json as follows:
 
+    "adapterTypes": [
+        ...
+          { "name":"SQLite Data Adapter", "invariantName": "sqlite", "type":"most-data-sqlite" }
+        ...
+        ],
     adapters: {
+        ...
         "sqlite": { "name":"local-db", "invariantName":"sqlite", "default":true,
             "options": {
-              
+                database:"db/local.db"
             }
+        ...
     }
 }
 
