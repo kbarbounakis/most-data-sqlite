@@ -747,9 +747,9 @@ SQLiteAdapter.prototype.lastIdentity = function(callback) {
                     callback(null, { insertId: null });
                 }
                 else {
-                    lastval.rows = lastval.rows || [];
-                    if (lastval.rows.length>0)
-                        callback(null, { insertId:lastval.rows[0]['lastval'] });
+                    lastval = lastval || [];
+                    if (lastval.length>0)
+                        callback(null, { insertId:lastval[0]['lastval'] });
                     else
                         callback(null, { insertId: null });
                 }
