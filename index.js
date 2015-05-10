@@ -759,7 +759,7 @@ SQLiteAdapter.prototype.lastIdentity = function(callback) {
 };
 
 /**
- * @class PGSqlFormatter
+ * @class SqliteFormatter
  * @constructor
  * @augments {SqlFormatter}
  */
@@ -779,6 +779,9 @@ SqliteFormatter.prototype.escapeName = function(name) {
     return name;
 };
 
+var REGEXP_SINGLE_QUOTE=/\\'/g, SINGLE_QUOTE_ESCAPE ='\'\'',
+    REGEXP_DOUBLE_QUOTE=/\\"/g, DOUBLE_QUOTE_ESCAPE = '"',
+    REGEXP_SLASH=/\\\\/g, SLASH_ESCAPE = '\\';
 /**
  * Escapes an object or a value and returns the equivalent sql value.
  * @param {*} value - A value that is going to be escaped for SQL statements
@@ -787,8 +790,20 @@ SqliteFormatter.prototype.escapeName = function(name) {
  */
 SqliteFormatter.prototype.escape = function(value,unquoted)
 {
-    if (typeof value === 'boolean') { return value ? 1 : 0; }
-    return SqliteFormatter.super_.prototype.escape.call(this, value, unquoted);
+    if (typeof value === 'boolean') { return value ? '1' : '0'; }
+    var res = SqliteFormatter.super_.prototype.escape.call(this, value, unquoted);
+    if (typeof value === 'string') {
+        if (REGEXP_SINGLE_QUOTE.test(res))
+        //escape single quote (that is already escaped)
+            res = res.replace(REGEXP_SINGLE_QUOTE, SINGLE_QUOTE_ESCAPE);
+        if (REGEXP_DOUBLE_QUOTE.test(res))
+        //escape double quote (that is already escaped)
+            res = res.replace(REGEXP_DOUBLE_QUOTE, DOUBLE_QUOTE_ESCAPE);
+        if (REGEXP_SLASH.test(res))
+        //escape slash (that is already escaped)
+            res = res.replace(REGEXP_SLASH, SLASH_ESCAPE);
+    }
+    return res;
 };
 
 /**
