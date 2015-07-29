@@ -795,13 +795,13 @@ SqliteFormatter.prototype.escape = function(value,unquoted)
     if (typeof value === 'string') {
         if (REGEXP_SINGLE_QUOTE.test(res))
         //escape single quote (that is already escaped)
-            res = res.replace(REGEXP_SINGLE_QUOTE, SINGLE_QUOTE_ESCAPE);
+            res = res.replace(/\\'/g, SINGLE_QUOTE_ESCAPE);
         if (REGEXP_DOUBLE_QUOTE.test(res))
         //escape double quote (that is already escaped)
-            res = res.replace(REGEXP_DOUBLE_QUOTE, DOUBLE_QUOTE_ESCAPE);
+            res = res.replace(/\\"/g, DOUBLE_QUOTE_ESCAPE);
         if (REGEXP_SLASH.test(res))
         //escape slash (that is already escaped)
-            res = res.replace(REGEXP_SLASH, SLASH_ESCAPE);
+            res = res.replace(/\\\\/g, SLASH_ESCAPE);
     }
     return res;
 };
