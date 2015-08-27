@@ -45,12 +45,12 @@ if (typeof Object.isNullOrUndefined !== 'function') {
 }
 
 /**
- * @class SQLiteAdapter
+ * @class SqliteAdapter
  * @augments DataAdapter
  * @param {*} options
  * @constructor
  */
-function SQLiteAdapter(options) {
+function SqliteAdapter(options) {
     /**
      * @type {{database: string}}
      */
@@ -62,7 +62,7 @@ function SQLiteAdapter(options) {
     this.rawConnection = null;
 }
 
-SQLiteAdapter.prototype.open = function(callback) {
+SqliteAdapter.prototype.open = function(callback) {
     var self = this;
     callback = callback || function() {};
     if (self.rawConnection) {
@@ -72,7 +72,7 @@ SQLiteAdapter.prototype.open = function(callback) {
         //try to open or create database
         self.rawConnection = new sqlite3.Database(self.options.database,6, function(err) {
             if (err) {
-                self.rawConnection = null;;
+                self.rawConnection = null;
             }
             callback(err);
 
@@ -80,7 +80,7 @@ SQLiteAdapter.prototype.open = function(callback) {
     }
 };
 
-SQLiteAdapter.prototype.close = function(callback) {
+SqliteAdapter.prototype.close = function(callback) {
     var self = this;
     callback = callback || function() {};
     try {
@@ -109,11 +109,11 @@ SQLiteAdapter.prototype.close = function(callback) {
  * @param {string} query
  * @param {*=} values
  */
-SQLiteAdapter.prototype.prepare = function(query,values) {
+SqliteAdapter.prototype.prepare = function(query,values) {
     return qry.prepare(query,values)
 };
 
-SQLiteAdapter.formatType = function(field)
+SqliteAdapter.formatType = function(field)
 {
     var size = parseInt(field.size), s;
     switch (field.type)
@@ -181,7 +181,7 @@ SQLiteAdapter.formatType = function(field)
  * @param fn {function} The function to execute
  * @param callback {function(Error=)} The callback that contains the error -if any- and the results of the given operation
  */
-SQLiteAdapter.prototype.executeInTransaction = function(fn, callback) {
+SqliteAdapter.prototype.executeInTransaction = function(fn, callback) {
     var self = this;
     //ensure parameters
     fn = fn || function() {}; callback = callback || function() {};
@@ -233,7 +233,7 @@ SQLiteAdapter.prototype.executeInTransaction = function(fn, callback) {
  * @param {QueryExpression|*} query
  * @param {function(Error=)} callback
  */
-SQLiteAdapter.prototype.createView = function(name, query, callback) {
+SqliteAdapter.prototype.createView = function(name, query, callback) {
     this.view(name).create(query, callback);
 };
 
@@ -242,7 +242,7 @@ SQLiteAdapter.prototype.createView = function(name, query, callback) {
  * @param {DataModelMigration|*} obj An Object that represents the data model scheme we want to migrate
  * @param {function(Error=)} callback
  */
-SQLiteAdapter.prototype.migrate = function(obj, callback) {
+SqliteAdapter.prototype.migrate = function(obj, callback) {
     var self = this;
     callback = callback || function() {};
     if (typeof obj === 'undefined' || obj == null) { callback(); return; }
@@ -255,7 +255,7 @@ SQLiteAdapter.prototype.migrate = function(obj, callback) {
     {
         var result = format;
         if (/%t/.test(format))
-            result = result.replace(/%t/g,SQLiteAdapter.formatType(obj));
+            result = result.replace(/%t/g,SqliteAdapter.formatType(obj));
         if (/%f/.test(format))
             result = result.replace(/%f/g,obj.name);
         return result;
@@ -265,7 +265,7 @@ SQLiteAdapter.prototype.migrate = function(obj, callback) {
     async.waterfall([
         //1. Check migrations table existence
         function(cb) {
-            if (SQLiteAdapter.supportMigrations) {
+            if (SqliteAdapter.supportMigrations) {
                 cb(null, true);
                 return;
             }
@@ -282,7 +282,7 @@ SQLiteAdapter.prototype.migrate = function(obj, callback) {
                 '"appliesTo" TEXT NOT NULL, "model" TEXT NULL, "description" TEXT,"version" TEXT NOT NULL)',
                 [], function(err) {
                     if (err) { cb(err); return; }
-                    SQLiteAdapter.supportMigrations=true;
+                    SqliteAdapter.supportMigrations=true;
                     cb(null, 0);
                 });
         },
@@ -432,7 +432,7 @@ SQLiteAdapter.prototype.migrate = function(obj, callback) {
                     else {
                         migration.add.forEach(function(x) {
                             //search for columns
-                            expressions.push(util.format('ALTER TABLE "%s" ADD COLUMN "%s" %s', migration.appliesTo, x.name, SQLiteAdapter.formatType(x)));
+                            expressions.push(util.format('ALTER TABLE "%s" ADD COLUMN "%s" %s', migration.appliesTo, x.name, SqliteAdapter.formatType(x)));
                         });
                     }
 
@@ -482,7 +482,7 @@ SQLiteAdapter.prototype.migrate = function(obj, callback) {
  * @param attribute {String} The target attribute
  * @param callback {Function=}
  */
-SQLiteAdapter.prototype.selectIdentity = function(entity, attribute , callback) {
+SqliteAdapter.prototype.selectIdentity = function(entity, attribute , callback) {
 
     var self = this;
 
@@ -541,12 +541,12 @@ SQLiteAdapter.prototype.selectIdentity = function(entity, attribute , callback) 
  * @param {DataModelBatch} batch
  * @param {function(Error=)} callback
  */
-SQLiteAdapter.prototype.executeBatch = function(batch, callback) {
+SqliteAdapter.prototype.executeBatch = function(batch, callback) {
     callback = callback || function() {};
     callback(new Error('DataAdapter.executeBatch() is obsolete. Use DataAdapter.executeInTransaction() instead.'));
 };
 
-SQLiteAdapter.prototype.table = function(name) {
+SqliteAdapter.prototype.table = function(name) {
     var self = this;
     return {
         /**
@@ -614,7 +614,7 @@ SQLiteAdapter.prototype.table = function(name) {
 
 };
 
-SQLiteAdapter.prototype.view = function(name) {
+SqliteAdapter.prototype.view = function(name) {
     var self = this;
     return {
         /**
@@ -673,7 +673,7 @@ SQLiteAdapter.prototype.view = function(name) {
  * @param values {*=}
  * @param {function(Error=,*=)} callback
  */
-SQLiteAdapter.prototype.execute = function(query, values, callback) {
+SqliteAdapter.prototype.execute = function(query, values, callback) {
     var self = this, sql = null;
     try {
 
@@ -734,7 +734,7 @@ SQLiteAdapter.prototype.execute = function(query, values, callback) {
 
 };
 
-SQLiteAdapter.prototype.lastIdentity = function(callback) {
+SqliteAdapter.prototype.lastIdentity = function(callback) {
     var self = this;
     self.open(function(err) {
         if (err) {
@@ -757,6 +757,15 @@ SQLiteAdapter.prototype.lastIdentity = function(callback) {
         }
     });
 };
+
+function zeroPad(number, length) {
+    number = number || 0;
+    var res = number.toString();
+    while (res.length < length) {
+        res = '0' + res;
+    }
+    return res;
+}
 
 /**
  * @class SqliteFormatter
@@ -791,6 +800,9 @@ var REGEXP_SINGLE_QUOTE=/\\'/g, SINGLE_QUOTE_ESCAPE ='\'\'',
 SqliteFormatter.prototype.escape = function(value,unquoted)
 {
     if (typeof value === 'boolean') { return value ? '1' : '0'; }
+    if (value instanceof Date) {
+        return this.escapeDate(value);
+    }
     var res = SqliteFormatter.super_.prototype.escape.call(this, value, unquoted);
     if (typeof value === 'string') {
         if (REGEXP_SINGLE_QUOTE.test(res))
@@ -807,6 +819,24 @@ SqliteFormatter.prototype.escape = function(value,unquoted)
 };
 
 /**
+ * @param {Date|*} val
+ * @returns {string}
+ */
+SqliteFormatter.prototype.escapeDate = function(val) {
+    var year   = val.getFullYear();
+    var month  = zeroPad(val.getMonth() + 1, 2);
+    var day    = zeroPad(val.getDate(), 2);
+    var hour   = zeroPad(val.getHours(), 2);
+    var minute = zeroPad(val.getMinutes(), 2);
+    var second = zeroPad(val.getSeconds(), 2);
+    var millisecond = zeroPad(val.getMilliseconds(), 3);
+    //format timezone
+    var offset = val.getTimezoneOffset(),
+        timezone = (offset<=0 ? '+' : '-') + zeroPad(-Math.floor(offset/60),2) + ':' + zeroPad(offset%60,2);
+    return "'" + year + '-' + month + '-' + day + ' ' + hour + ':' + minute + ':' + second + "." + millisecond + timezone + "'";
+};
+
+/**
  * Implements indexOf(str,substr) expression formatter.
  * @param {string} p0 The source string
  * @param {string} p1 The string to search for
@@ -815,6 +845,17 @@ SqliteFormatter.prototype.escape = function(value,unquoted)
 SqliteFormatter.prototype.$indexof = function(p0, p1)
 {
     return util.format('(INSTR(%s,%s)-1)', this.escape(p0), this.escape(p1));
+};
+
+/**
+ * Implements contains(a,b) expression formatter.
+ * @param {string} p0 The source string
+ * @param {string} p1 The string to search for
+ * @returns {string}
+ */
+SqliteFormatter.prototype.$text = function(p0, p1)
+{
+    return util.format('(INSTR(%s,%s)-1)>=0', this.escape(p0), this.escape(p1));
 };
 
 /**
@@ -890,16 +931,20 @@ SqliteFormatter.prototype.$date = function(p0) { return 'date(' + this.escape(p0
 
 var sqli = {
     /**
-     * @constructs SQLiteAdapter
+     * @constructs SqliteAdapter
      * */
-    SQLiteAdapter : SQLiteAdapter,
+    SqliteAdapter : SqliteAdapter,
     /**
-     * Creates an instance of SQLiteAdapter object that represents a sqlite database connection.
+     * @constructs SqliteFormatter
+     * */
+    SqliteFormatter : SqliteFormatter,
+    /**
+     * Creates an instance of SqliteAdapter object that represents a sqlite database connection.
      * @param {*} options An object that represents the properties of the underlying database connection.
      * @returns {DataAdapter|*}
      */
     createInstance: function(options) {
-        return new SQLiteAdapter(options);
+        return new SqliteAdapter(options);
     }
 };
 
