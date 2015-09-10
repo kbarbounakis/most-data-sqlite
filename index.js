@@ -857,6 +857,22 @@ SqliteFormatter.prototype.$text = function(p0, p1)
 {
     return util.format('(INSTR(%s,%s)-1)>=0', this.escape(p0), this.escape(p1));
 };
+/**
+ * Implements simple regular expression formatter. Important Note: SQLite 3 does not provide a core sql function for regular expression matching.
+ * @param {string|*} p0 The source string or field
+ * @param {string|*} p1 The string to search for
+ */
+SqliteFormatter.prototype.$regex = function(p0, p1)
+{
+    //escape expression
+    var s1 = this.escape(p1, true);
+    //implement starts with equivalent for PATINDEX T-SQL
+    s1 = s1.replace(/^\^/, (/^\^/.test(s1) ? '' : '%'));
+    //implement ends with equivalent for PATINDEX T-SQL
+    s1 = s1.replace(/\$$/, (/\$$/.test(s1) ? '' : '%'));
+    //use patindex for text searching
+    return util.format('LIKE(\'%s\',%s) >= 1',s1, this.escape(p0));
+};
 
 /**
  * Implements concat(a,b) expression formatter.
