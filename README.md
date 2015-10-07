@@ -29,7 +29,7 @@ Register SQLite adapter on app.json as follows:
 If you are intended to use SQLite adapter as the default database adapter set the property "default" to true. 
 
 ####Post Installation Note:
-SQLite Data Adapter comes with a regular expression extension for SQLite. You have to compile this extension as follows:
+SQLite Data Adapter comes with a regular expression extension for SQLite (regexp.c). You have to compile this extension as follows:
 
 #####Using GCC/MinGW on Windows and Linux
 gcc -shared -fPIC -Isqlite3 -o regexp.0.dylib regexp.c
