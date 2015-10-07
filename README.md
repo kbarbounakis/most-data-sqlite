@@ -14,14 +14,16 @@ Register SQLite adapter on app.json as follows:
           { "name":"SQLite Data Adapter", "invariantName": "sqlite", "type":"most-data-sqlite" }
         ...
         ],
-    adapters: {
+    adapters: [
         ...
-        "sqlite": { "name":"local-db", "invariantName":"sqlite", "default":true,
+        { 
+            "name":"local-db", "invariantName":"sqlite", "default":true,
             "options": {
                 database:"db/local.db"
             }
+        }
         ...
-    }
+    ]
 }
 
 If you are intended to use SQLite adapter as the default database adapter set the property "default" to true. 
