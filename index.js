@@ -438,7 +438,11 @@ SqliteAdapter.prototype.migrate = function(obj, callback) {
 
                 }
                 if (expressions.length>0) {
-                    self.execute(expressions.join(';'), [], function(err) {
+                    async.eachSeries(expressions, function(expr,cb) {
+                        self.execute(expr, [], function(err) {
+                            cb(err);
+                        });
+                    }, function(err) {
                         if (err) { cb(err); return; }
                         cb(null, 1);
                     });
