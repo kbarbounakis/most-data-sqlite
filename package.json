@@ -1,6 +1,6 @@
 {
   "name": "most-data-sqlite",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Most Web Framework SQLite Adapter",
   "homepage": "https://github.com/kbarbounakis/most-data-sqlite",
   "repository": {
