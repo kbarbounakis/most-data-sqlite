@@ -512,7 +512,7 @@ SqliteAdapter.prototype.selectIdentity = function(entity, attribute , callback) 
                     if (err) { callback.call(self, err); return; }
                     var value = 1;
                     if (result.length>0) {
-                        value = parseInt(result[0][attribute]) + 1;
+                        value = (parseInt(result[0][attribute]) || 0)+ 1;
                     }
                     self.execute('INSERT INTO increment_id(entity, attribute, value) VALUES (?,?,?)',[entity, attribute, value], function(err) {
                         //throw error if any
