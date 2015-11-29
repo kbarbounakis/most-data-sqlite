@@ -870,11 +870,20 @@ SqliteFormatter.prototype.$regex = function(p0, p1)
 {
     //escape expression
     var s1 = this.escape(p1, true);
-    //implement starts with equivalent for PATINDEX T-SQL
-    s1 = s1.replace(/^\^/, (/^\^/.test(s1) ? '' : '%'));
-    //implement ends with equivalent for PATINDEX T-SQL
-    s1 = s1.replace(/\$$/, (/\$$/.test(s1) ? '' : '%'));
-    //use patindex for text searching
+    //implement starts with equivalent for LIKE T-SQL
+    if (/^\^/.test(s1)) {
+        s1 = s1.replace(/^\^/,'');
+    }
+    else {
+        s1 = '%' + s1;
+    }
+    //implement ends with equivalent for LIKE T-SQL
+    if (/\$$/.test(s1)) {
+        s1 = s1.replace(/\$$/,'');
+    }
+    else {
+        s1 += '%';
+    }
     return util.format('LIKE(\'%s\',%s) >= 1',s1, this.escape(p0));
 };
 
