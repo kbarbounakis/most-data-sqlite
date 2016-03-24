@@ -852,6 +852,17 @@ SqliteFormatter.prototype.$indexof = function(p0, p1)
 };
 
 /**
+ * Implements indexOf(str,substr) expression formatter.
+ * @param {string} p0 The source string
+ * @param {string} p1 The string to search for
+ * @returns {string}
+ */
+SqliteFormatter.prototype.$indexOf = function(p0, p1)
+{
+    return util.format('(INSTR(%s,%s)-1)', this.escape(p0), this.escape(p1));
+};
+
+/**
  * Implements contains(a,b) expression formatter.
  * @param {string} p0 The source string
  * @param {string} p1 The string to search for
@@ -914,6 +925,21 @@ SqliteFormatter.prototype.$substring = function(p0, pos, length)
 };
 
 /**
+ * Implements substring(str,pos) expression formatter.
+ * @param {String} p0 The source string
+ * @param {Number} pos The starting position
+ * @param {Number=} length The length of the resulted string
+ * @returns {string}
+ */
+SqliteFormatter.prototype.$substr = function(p0, pos, length)
+{
+    if (length)
+        return util.format('SUBSTR(%s,%s,%s)', this.escape(p0), pos.valueOf()+1, length.valueOf());
+    else
+        return util.format('SUBSTR(%s,%s)', this.escape(p0), pos.valueOf()+1);
+};
+
+/**
  * Implements length(a) expression formatter.
  * @param {*} p0
  * @returns {string}
@@ -951,6 +977,7 @@ SqliteFormatter.prototype.$endswith = function(p0, p1)
 };
 
 SqliteFormatter.prototype.$day = function(p0) { return 'CAST(strftime(\'%d\', ' + this.escape(p0) + ') AS INTEGER)'; };
+SqliteFormatter.prototype.$dayOfMonth = function(p0) { return 'CAST(strftime(\'%d\', ' + this.escape(p0) + ') AS INTEGER)'; };
 SqliteFormatter.prototype.$month = function(p0) { return 'CAST(strftime(\'%m\', ' + this.escape(p0) + ') AS INTEGER)'; };
 SqliteFormatter.prototype.$year = function(p0) { return 'CAST(strftime(\'%Y\', ' + this.escape(p0) + ') AS INTEGER)'; };
 SqliteFormatter.prototype.$hour = function(p0) { return 'CAST(strftime(\'%H\', ' + this.escape(p0) + ') AS INTEGER)'; };
