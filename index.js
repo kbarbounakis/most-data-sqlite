@@ -784,7 +784,7 @@ function SqliteFormatter() {
 }
 util.inherits(SqliteFormatter, qry.classes.SqlFormatter);
 
-SqliteFormatter.NAME_FORMAT = '$1';
+SqliteFormatter.NAME_FORMAT = '`$1`';
 
 SqliteFormatter.prototype.escapeName = function(name) {
     if (typeof name === 'string')
