@@ -138,13 +138,15 @@ SqliteAdapter.formatType = function(field)
             if ((field.size) && (field.scale)) { s += '(' + field.size + ',' + field.scale + ')'; }
             break;
         case 'Date':
-        case 'Time':
         case 'DateTime':
             s = 'NUMERIC';
             break;
+        case 'Time':
+            s = size>0 ?  util.format('TEXT(%s,0)', size) : 'TEXT';
+            break;
         case 'Long':
         case 'Duration':
-            s = 'INTEGER';
+            s = size>0 ?  util.format('TEXT(%s,0)', size) : 'TEXT';
             break;
         case 'Integer':
             s = 'INTEGER' + (field.size ? '(' + field.size + ',0)':'' );
@@ -455,6 +457,26 @@ SqliteAdapter.prototype.migrate = function(obj, callback) {
                 cb(new Error('Invalid table status.'));
             }
         },
+        //Apply data model indexes
+        function (arg, cb) {
+            if (arg<=0) { return cb(null, arg); }
+            if (migration.indexes) {
+                var tableIndexes = self.indexes(migration.appliesTo);
+                //enumerate migration constraints
+                async.eachSeries(migration.indexes, function(index, indexCallback) {
+                    tableIndexes.create(index.name, index.columns, indexCallback);
+                }, function(err) {
+                    //throw error
+                    if (err) { return cb(err); }
+                    //or return success flag
+                    return cb(null, 1);
+                });
+            }
+            else {
+                //do nothing and exit
+                return cb(null, 1);
+            }
+        },
         function(arg, cb) {
             if (arg>0) {
                 //log migration to database
@@ -760,6 +782,112 @@ SqliteAdapter.prototype.lastIdentity = function(callback) {
             });
         }
     });
+};
+
+SqliteAdapter.prototype.indexes = function(table) {
+    var self = this, formatter = new SqliteFormatter();
+    return {
+        list: function (callback) {
+            var this1 = this;
+            if (this1.hasOwnProperty('indexes_')) {
+                return callback(null, this1['indexes_']);
+            }
+            self.execute(util.format('PRAGMA INDEX_LIST(`%s`)', table), null , function (err, result) {
+                if (err) { return callback(err); }
+                var indexes = result.filter(function(x) {
+                    return x.origin === 'c';
+                }).map(function(x) {
+                    return {
+                        name:x.name,
+                        columns:[]
+                    }
+                });
+                async.eachSeries(indexes, function(index, cb) {
+                    self.execute(util.format('PRAGMA INDEX_INFO(`%s`)', index.name), function(err, columns) {
+                       if (err) { return cb(err); }
+                        index.columns = columns.map(function(x) {
+                            return x.name;
+                        })
+                    });
+                }, function(err) {
+                    if (err) {
+                        return callback(err);
+                    }
+                    this1['indexes_'] = indexes;
+                    return callback(null, indexes);
+                });
+            });
+        },
+        /**
+         * @param {string} name
+         * @param {Array|string} columns
+         * @param {Function} callback
+         */
+        create: function(name, columns, callback) {
+            var cols = [];
+            if (typeof columns === 'string') {
+                cols.push(columns)
+            }
+            else if (util.isArray(columns)) {
+                cols.push.apply(cols, columns);
+            }
+            else {
+                return callback(new Error("Invalid parameter. Columns parameter must be a string or an array of strings."));
+            }
+
+            this.list(function(err, indexes) {
+                if (err) { return callback(err); }
+                var ix = indexes.find(function(x) { return x.name === name; });
+                //format create index SQL statement
+                var sqlCreateIndex = util.format("CREATE INDEX %s ON %s(%s)",
+                    formatter.escapeName(name),
+                    formatter.escapeName(table),
+                    cols.map(function(x) {
+                        return formatter.escapeName(x)
+                    }).join(","));
+                if (typeof ix === 'undefined' || ix == null) {
+                    self.execute(sqlCreateIndex, [], callback);
+                }
+                else {
+                    var nCols = cols.length;
+                    //enumerate existing columns
+                    ix.columns.forEach(function(x) {
+                        if (cols.indexOf(x)>=0) {
+                            //column exists in index
+                            nCols -= 1;
+                        }
+                    });
+                    if (nCols>0) {
+                        //drop index
+                        this.drop(name, function(err) {
+                            if (err) { return callback(err); }
+                            //and create it
+                            self.execute(sqlCreateIndex, [], callback);
+                        });
+                    }
+                    else {
+                        //do nothing
+                        return callback();
+                    }
+                }
+            });
+
+
+        },
+        drop: function(name, callback) {
+            if (typeof name !== 'string') {
+                return callback(new Error("Name must be a valid string."))
+            }
+            self.execute(util.format('PRAGMA INDEX_LIST(`%s`)', table), null, function(err, result) {
+                if (err) { return callback(err); }
+                var exists = typeof result.find(function(x) { return x.name===name }) !== 'undefined';
+                if (!exists) {
+                    return callback();
+                }
+                self.execute(util.format("DROP INDEX %s", self.escapeName(name)), [], callback);
+            });
+        }
+    }
 };
 
 function zeroPad(number, length) {
