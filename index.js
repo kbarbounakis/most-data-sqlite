@@ -745,10 +745,32 @@ SqliteAdapter.prototype.execute = function(query, values, callback) {
                         callback(err);
                     }
                     else {
-                        if (result)
-                            callback(null, result);
-                        else
-                            callback();
+                        if (result) {
+                            if (typeof result === 'object') {
+                                var keys;
+                                if (util.isArray(result)) {
+                                    if (result.length>0) {
+                                        keys = Object.keys(result[0]);
+                                        result.forEach(function(x) {
+                                            keys.forEach(function(y) {
+                                                if (x[y] == null) { delete x[y]; }
+                                            });
+                                        });
+                                    }
+                                }
+                                else {
+                                    keys = Object.keys(result);
+                                    keys.forEach(function(y) {
+                                        if (result[y] == null) { delete result[y]; }
+                                    });
+                                }
+                            }
+                            return callback(null, result);
+                        }
+                        else {
+                            return callback();
+                        }
+
                     }
                 });
             }
