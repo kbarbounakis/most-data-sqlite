@@ -814,7 +814,7 @@ SqliteAdapter.prototype.indexes = function(table) {
             if (this1.hasOwnProperty('indexes_')) {
                 return callback(null, this1['indexes_']);
             }
-            self.execute(util.format('PRAGMA INDEX_LIST(`%s`)', table), null , function (err, result) {
+            self.execute(util.format('PRAGMA INDEX_LIST(`%s`)', table), [] , function (err, result) {
                 if (err) { return callback(err); }
                 var indexes = result.filter(function(x) {
                     return x.origin === 'c';
@@ -825,11 +825,12 @@ SqliteAdapter.prototype.indexes = function(table) {
                     }
                 });
                 async.eachSeries(indexes, function(index, cb) {
-                    self.execute(util.format('PRAGMA INDEX_INFO(`%s`)', index.name), function(err, columns) {
+                    self.execute(util.format('PRAGMA INDEX_INFO(`%s`)', index.name), null, function(err, columns) {
                        if (err) { return cb(err); }
                         index.columns = columns.map(function(x) {
                             return x.name;
-                        })
+                        });
+                       return cb();
                     });
                 }, function(err) {
                     if (err) {
@@ -900,7 +901,7 @@ SqliteAdapter.prototype.indexes = function(table) {
             if (typeof name !== 'string') {
                 return callback(new Error("Name must be a valid string."))
             }
-            self.execute(util.format('PRAGMA INDEX_LIST(`%s`)', table), null, function(err, result) {
+            self.execute(util.format('PRAGMA INDEX_LIST(`%s`)', table), [], function(err, result) {
                 if (err) { return callback(err); }
                 var exists = typeof result.find(function(x) { return x.name===name }) !== 'undefined';
                 if (!exists) {
