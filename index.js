@@ -372,16 +372,16 @@ SqliteAdapter.prototype.migrate = function(obj, callback) {
                 }
                 //1. columns to be changed
                 if (util.isArray(migration.change)) {
-                    if (migration.change>0) {
+                    if (migration.change.length>0) {
 
                         for (var i = 0; i < migration.change.length; i++) {
                             var x = migration.change[i];
-                            column = columns.find(function(y) { return y.name==x.name; });
+                            column = columns.find(function(y) { return y.name===x.name; });
                             if (column) {
                                 if (!column.primary) {
                                     //validate new column type (e.g. TEXT(120,0) NOT NULL)
                                     newType = format('%t', x); oldType = column.type.toUpperCase().concat(column.nullable ? ' NOT NULL' : ' NULL');
-                                    if ((newType!=oldType)) {
+                                    if ((newType!==oldType)) {
                                         //force alter
                                         forceAlter = true;
                                     }
@@ -408,7 +408,7 @@ SqliteAdapter.prototype.migrate = function(obj, callback) {
 
                     for (var i = 0; i < migration.add.length; i++) {
                         var x = migration.add[i];
-                        column = columns.find(function(y) { return (y.name==x.name); });
+                        column = columns.find(function(y) { return (y.name===x.name); });
                         if (column) {
                             if (column.primary) {
                                 migration.add.splice(i, 1);
@@ -416,7 +416,7 @@ SqliteAdapter.prototype.migrate = function(obj, callback) {
                             }
                             else {
                                 newType = format('%t', x); oldType = column.type.toUpperCase().concat(column.nullable ? ' NOT NULL' : ' NULL');
-                                if (newType==oldType) {
+                                if (newType===oldType) {
                                     //remove column from add collection
                                     migration.add.splice(i, 1);
                                     i-=1;
