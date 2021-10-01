@@ -1,3 +1,9 @@
+## *This package has been archived*
+
+Checkout the new version of [@themost/sqlite](https://github.com/themost-framework/sqlite/)
+
+
+
 # most-data-sqlite
 MOST Web Framework SQLite Adapter
 
